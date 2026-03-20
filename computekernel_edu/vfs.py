@@ -138,9 +138,11 @@ class MountPoint:
     Real kernel: struct mount (vfsmount) links a filesystem's root dentry
     to its mount point in the global namespace. Mounts form a tree (mount tree).
     """
-    mountpoint: str     # where it's mounted in the VFS tree (e.g. "/", "/dev")
-    fs:         Filesystem
-    source:     str     # device or name (e.g. "tmpfs", "/dev/sda1")
+    def __init__(self, path: str, fs: "Filesystem", source: str = ""):
+        self.path: str = path          # where it's mounted (e.g. "/", "/dev")
+        self.mountpoint: str = path    # alias for compatibility
+        self.fs: "Filesystem" = fs
+        self.source: str = source
 
 
 class VFS:
@@ -171,10 +173,10 @@ class VFS:
         the mounted filesystem's root.
         """
         fs.mount(source, mountpoint)
-        mp = MountPoint(mountpoint=mountpoint, fs=fs, source=source)
+        mp = MountPoint(path=mountpoint, fs=fs, source=source)
         # Insert in reverse length order so longest-match is first
         self._mounts.append(mp)
-        self._mounts.sort(key=lambda m: len(m.mountpoint), reverse=True)
+        self._mounts.sort(key=lambda m: len(m.path), reverse=True)
         self._logger.info("VFS", f"mount: {fs.fstype} ({source}) -> {mountpoint}")
 
     def _resolve_path(self, path: str) -> Tuple[Optional[Filesystem], int]:
@@ -308,7 +310,7 @@ class VFS:
             return []
         return fs.readdir(ino)
 
-    def stat(self, path: str) -> Optional[dict]:
+    def stat(self, path: str) -> "Optional[Inode]":
         """SIMULATOR: Stat a path (like stat(2) syscall).
 
         Real kernel: vfs_stat() -> vfs_getattr() -> inode->i_op->getattr().
@@ -318,19 +320,9 @@ class VFS:
         if fs is None or ino < 0:
             return None
         inode = fs.lookup(ino)
-        if inode is None:
-            return None
-        return {
-            "ino":   inode.ino,
-            "type":  inode.itype.value,
-            "mode":  oct(inode.mode),
-            "uid":   inode.uid,
-            "gid":   inode.gid,
-            "size":  inode.size,
-            "nlink": inode.nlink,
-        }
+        return inode
 
-    def mkdir(self, path: str) -> bool:
+    def mkdir(self, path: str, creds=None) -> bool:
         """SIMULATOR: Create a directory.
 
         Real kernel: sys_mkdir() -> vfs_mkdir() -> inode->i_op->mkdir().

@@ -10,7 +10,8 @@ SIMULATOR: We model 14 common syscalls with simulated behavior.
 Error return convention: negative values are -errno (e.g. -2 = ENOENT).
 """
 
-from typing import TYPE_CHECKING, Optional
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, Optional, List
 from .logger import KernelLogger
 
 if TYPE_CHECKING:
@@ -28,6 +29,49 @@ EBADF  =  9
 ENOMEM = 12
 EINVAL = 22
 ENOSYS = 38
+
+# Syscall number -> name mapping (x86_64 ABI inspired)
+SYSCALL_TABLE = {
+    0:  "read",
+    1:  "write",
+    2:  "openat",
+    3:  "close",
+    9:  "mmap",
+    11: "munmap",
+    12: "brk",
+    35: "nanosleep",
+    39: "getpid",
+    57: "fork",
+    59: "execve",
+    60: "exit",
+    61: "wait4",
+    62: "kill",
+}
+
+
+@dataclass
+class SyscallContext:
+    """SIMULATOR: Models the x86_64 syscall register state.
+
+    Real kernel: On x86_64, the SYSCALL instruction transfers control to the
+    kernel entry point.  The calling convention is:
+      rax = syscall number
+      rdi, rsi, rdx, r10, r8, r9 = arguments (up to 6)
+      Return value in rax; negative values indicate -errno.
+
+    SIMULATOR: We represent this as a Python dataclass instead of actual CPU
+    registers.  No privilege level change occurs.
+    """
+    nr: int
+    rdi: int = 0
+    rsi: int = 0
+    rdx: int = 0
+    r10: int = 0
+    r8:  int = 0
+    r9:  int = 0
+    pid: int = 0
+    result: int = 0
+    error: Optional[int] = None
 
 
 class SyscallDispatcher:
@@ -91,18 +135,34 @@ class SyscallDispatcher:
             self.NR_KILL:      self._sys_kill,
         }
 
-    def dispatch(self, pid: int, nr: int, *args) -> int:
+    def dispatch(self, ctx_or_pid, nr: int = 0, *args) -> int:
         """SIMULATOR: Dispatch a syscall for the given process.
+
+        Accepts either a SyscallContext object or positional (pid, nr, *args).
 
         Real kernel: entry_SYSCALL_64 -> syscall_enter_from_user_mode() ->
         sys_call_table[nr](regs) -> syscall_exit_to_user_mode().
         """
+        if isinstance(ctx_or_pid, SyscallContext):
+            ctx = ctx_or_pid
+            pid = ctx.pid
+            nr  = ctx.nr
+            # Pass only the raw register args; each handler takes what it needs
+            args = (ctx.rdi, ctx.rsi, ctx.rdx, ctx.r10, ctx.r8, ctx.r9)
+        else:
+            pid = ctx_or_pid
+
         handler = self._table.get(nr)
         if handler is None:
             self._logger.warn("SYSCALL", f"pid={pid} nr={nr}: ENOSYS (not implemented)")
             return -ENOSYS
         self._logger.debug("SYSCALL", f"pid={pid} syscall nr={nr} args={args}")
-        return handler(pid, *args)
+        # Trim args to what the handler actually accepts
+        import inspect
+        sig = inspect.signature(handler)
+        # -1 because 'pid' is the first explicit param
+        max_args = len(sig.parameters) - 1
+        return handler(pid, *args[:max_args])
 
     # -------------------------------------------------------------------------
     # Individual syscall implementations

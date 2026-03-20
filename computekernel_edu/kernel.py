@@ -24,7 +24,7 @@ from .security import CredentialManager
 from .power import PowerManager
 from .console import SerialConsole, Tty
 from .teaching import TeachingEngine
-from .panic import KernelPanic
+from .syscall import SyscallDispatcher
 
 
 class KernelState:
@@ -59,6 +59,7 @@ class KernelState:
         self.tty:             Tty                    | None = None
         self.safe_mode:       SafeMode               | None = None
         self.boot_pipeline:   BootPipeline           | None = None
+        self.syscall_dispatcher: SyscallDispatcher   | None = None
         self.teach:           TeachingEngine                = TeachingEngine()
 
         self._init_complete = False
@@ -95,6 +96,14 @@ class KernelState:
         self.console         = SerialConsole(log)
         self.tty             = Tty("tty0", self.console, log)
         self.safe_mode       = SafeMode(self.profile, log)
+
+        self.syscall_dispatcher = SyscallDispatcher(
+            process_table=self.process_table,
+            thread_table=self.thread_table,
+            vfs=self.vfs,
+            vmm=self.vmm,
+            logger=log,
+        )
 
         # Register default modules
         for mod in make_default_modules():
