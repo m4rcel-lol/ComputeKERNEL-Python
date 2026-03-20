@@ -23,6 +23,7 @@ if TYPE_CHECKING:
 # errno constants (negative = error return)
 EPERM  =  1
 ENOENT =  2
+ESRCH  =  3
 EBADF  =  9
 ENOMEM = 12
 EINVAL = 22
@@ -350,7 +351,7 @@ class SyscallDispatcher:
         target = self._pt.get(target_pid)
         if target is None:
             self._logger.warn("SYSCALL", f"kill: target pid={target_pid} not found")
-            return -ESRCH if False else -EINVAL
+            return -ESRCH
 
         # Map signum to Signal enum
         sig_map = {s.value: s for s in Signal}
@@ -363,5 +364,3 @@ class SyscallDispatcher:
         return 0
 
 
-# Additional errno not listed above
-ESRCH = 3
