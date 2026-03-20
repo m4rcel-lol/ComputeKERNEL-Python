@@ -28,13 +28,15 @@ EXPECTED_ROADMAP = [
 
 
 def test_roadmap_includes_required_items_as_planned():
-    required = {(name, detail) for name, detail in EXPECTED_ROADMAP}
-    actual = {(name, detail) for name, detail, status in ROADMAP if status == "Planned"}
-    assert required.issubset(actual)
+    roadmap_rows = [row for row in ROADMAP if (row[0], row[1]) in EXPECTED_ROADMAP]
+    assert len(roadmap_rows) == len(EXPECTED_ROADMAP)
+    assert len({(name, detail) for name, detail, _ in roadmap_rows}) == len(EXPECTED_ROADMAP)
+    assert all(status == "Planned" for _, _, status in roadmap_rows)
 
 
 def test_format_roadmap_lists_required_items_as_unchecked():
-    text = format_roadmap()
+    lines = format_roadmap().splitlines()
     for name, detail in EXPECTED_ROADMAP:
-        assert f"[ ] {name}" in text
-        assert detail in text
+        matching_lines = [line for line in lines if name in line and detail in line]
+        assert len(matching_lines) == 1
+        assert "[ ]" in matching_lines[0]
